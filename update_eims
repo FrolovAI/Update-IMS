@@ -1,0 +1,22 @@
+#!/bin/bash
+
+
+# Поиск крайней (по дате создания) версии ИМС "Элина" на YAKe
+
+  vers_ims=`lftp -e "cls --sort=date /eims_versions/astra-1.6/eims-Elina | head -1 && exit" 100.100.105.110`
+
+# Скачивание версии ИМС во временную папку
+
+  echo "Скачивается версия ИМС:"
+  echo $vers_ims
+  mkdir temp_ims
+  lftp -e "get $vers_ims -o ./temp_ims/eims.tar.gz && exit" 100.100.105.110
+
+
+# Установка новых файлов из архива
+
+  echo "Обновление ИМС Элина..."
+  tar xfz ./temp_ims/eims.tar.gz --strip=2
+
+
+  echo "----------Завершено----------"

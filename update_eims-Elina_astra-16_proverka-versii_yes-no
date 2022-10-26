@@ -1,0 +1,75 @@
+#!/bin/bash
+
+##    Обновление ИМС "Элина" с сервера YAK на рабочих машинах сотрудников для ОС Астра-1.6
+##    Для обновления поместить скрипт в папку с обновляемым ИМСом и запустить его выполнение.
+
+# Проверка наличия структуры ИМС
+
+  if ! [ -d ./bin -a -d ./bm -a -d ./conf -a -d ./rlibs -a -d ./sdk ]
+   then echo "Не найдена структура ИМС" ;
+        echo "Скрипт необходимо запускать из папки с ИМСом !!!"
+   exit 1
+  fi
+
+# Проверка наличия / установка lftp
+
+  which lftp &>/dev/null
+  if [ $? -ne 0 ]
+   then echo "Подготовка..." ;
+        sudo apt -y install lftp &>/dev/null
+  fi
+
+# Проверка доступности YAK
+
+  ping -c1 100.100.105.110 &>/dev/null
+  if [ $? -ne 0 ]
+   then echo "Сервер YAK недоступен"
+   exit 1
+  fi 
+
+# Поиск крайней (по дате создания) версии ИМС "Элина" на YAKe
+
+  echo "Доступная версия ИМС Элина на сервере:"
+  vers_ims=`lftp -e "cls --sort=date /eims_versions/astra-1.6/eims-Elina | head -1 && exit" 100.100.105.110`
+  echo $vers_ims
+
+# Скачивание архива версии ИМС во временную папку, сравнение с установленной версией по файлу whatisit.txt
+
+  echo "Проверка текущей версии ИМС..."
+  mkdir -p temp_ims
+  lftp -e "get $vers_ims -o ./temp_ims/eims.tar.gz && exit" 100.100.105.110 &>/dev/null
+  tar xfz ./temp_ims/eims.tar.gz -C ./temp_ims ./eims-Elina/whatisit.txt --strip=2
+  if [ "./temp_ims/whatisit.txt" -nt "whatisit.txt" ]
+   then echo "Выполняется обновление ИМС Элина..."
+   else echo "Вы используете актуальную версию ИМС"
+    while true; do
+     read -p "Всё равно продолжить обновление? Yes/No      " yn
+     case $yn in
+      [Yy]* ) echo "Выполняется обновление ИМС Элина.."; break;;
+      [Nn]* ) echo "-----Обновление отменено-----";
+              rm -r ./temp_ims; exit 0;;
+      * ) echo "       Введите Yes или No";;
+     esac
+    done
+  fi
+
+# Определение владельца папки с ИМСом, установка прав, пользователя для обновления
+
+  vl_ims=`stat -c %U $PWD`
+  gr_ims=`stat -c %G $PWD`
+  sudo chmod -R 777 $PWD
+  sudo chown -R $USER: $PWD
+
+# Установка новых файлов из архива
+
+  tar xfz ./temp_ims/eims.tar.gz --strip=2
+
+# Удаление временной папки, восстановление владельца папки с ИМСом
+
+  rm -r ./temp_ims
+  sudo chmod -R 777 $PWD
+  sudo chown -R $vl_ims:$gr_ims $PWD
+
+  echo "-----Обновление завершено-----"
+
+

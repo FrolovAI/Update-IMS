@@ -1,0 +1,81 @@
+#!/bin/bash
+
+##    Обновление ИМС "Элина" с сервера YAK на рабочих машинах сотрудников для ОС Астра-1.6
+##    Для обновления поместить скрипт в папку с обновляемым ИМСом и запустить его выполнение.
+
+# Проверка наличия структуры ИМС
+
+  if ! [ -d ./bin -a -d ./bm -a -d ./conf -a -d ./rlibs -a -d ./sdk ]
+   then echo "Не найдена структура ИМС" ;
+        echo "Скрипт необходимо запускать из папки с ИМСом !!!"
+   exit 1
+  fi
+
+# Проверка наличия / установка lftp
+
+  which lftp &>/dev/null
+  if [ $? -ne 0 ]
+   then echo "Подготовка..." ;
+        sudo apt-get -y install lftp &>/dev/null
+  fi
+
+# Проверка доступности YAK
+
+  ping -c1 100.100.105.110 &>/dev/null
+  if [ $? -ne 0 ]
+   then echo "Сервер YAK недоступен"
+   exit 1
+  fi 
+
+# Определение владельца папки с ИМСом, установка прав, пользователя для обновления
+
+  vl_ims=`stat -c %U $PWD`
+  gr_ims=`stat -c %G $PWD`
+  sudo chmod -R 777 $PWD
+  sudo chown -R $USER: $PWD
+
+# Определение версии ОС Астра, пути к ИМСам на YAKe
+
+  vers_OS=`lsb_release -r | cut -f2`
+  ims_path=/eims_versions/astra-$vers_OS
+
+# Определение версии ИМС / если нет -выбор из списка
+
+  ustan_IMS=`head -n 5 whatisit.txt 2>/dev/null | tail -n 1 | cut -c 19-`
+
+   if [ -z "$ustan_IMS" ]
+    then echo "Доступные ИМС:"
+         PS3="Введите порядковый номер обновляемого ИМС: "
+         select ims_name in `lftp -e "cls -1B $ims_path/eims* | tr -d "/" && exit" 100.100.105.110`
+               do echo "Выбран ИМС-"$ims_name
+               break
+         done
+    else ims_name=eims-$ustan_IMS
+   fi
+
+# Поиск крайней (по дате создания) версии ИМС
+
+  new_vers=`lftp -e "cls --sort=date $ims_path/$ims_name | head -1 && exit" 100.100.105.110`
+
+# Скачивание версии ИМС во временную папку
+  
+  show_ims=`echo $ims_name | cut -c 6-`
+  echo "Скачивается версия ИМС $show_ims:"
+  echo `lftp -e "cls -B --sort=date $ims_path/$ims_name | head -1 && exit" 100.100.105.110`
+  mkdir -p temp_ims
+  lftp -e "get $new_vers -o ./temp_ims/eims.tar.gz && exit" 100.100.105.110
+
+# Установка новых файлов из архива
+
+  echo "Обновление ИМС $show_ims..."
+  tar xfz ./temp_ims/eims.tar.gz --strip=2
+
+# Удаление временной папки, восстановление владельца папки с ИМСом
+
+  rm -r ./temp_ims
+  sudo chmod -R 777 $PWD
+  sudo chown -R $vl_ims:$gr_ims $PWD
+
+  echo "----------Завершено----------"
+
+
